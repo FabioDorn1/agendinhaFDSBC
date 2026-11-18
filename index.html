@@ -110,12 +110,12 @@
 
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
-  const db = initializeFirestore(app, { localCache: persistentLocalCache() }); // funciona offline
+  const db = initializeFirestore(app, { localCache: persistentLocalCache(), experimentalAutoDetectLongPolling: true }); // funciona offline
 
   const $ = id => document.getElementById(id);
   let calendar = null, uid = null, eventos = [], editandoId = null, cancelarEscuta = null;
 
-  const colecao = () => collection(db, "users", uid, "eventos");
+  const colecao = () => collection(db, "eventos"); // calendário compartilhado
   const paraFC = ev => ({
     id: ev.id, title: ev.titulo, allDay: !ev.hora,
     start: ev.hora ? ev.data + "T" + ev.hora : ev.data,
@@ -158,12 +158,16 @@
       });
       $("status").textContent = snap.metadata.hasPendingWrites ? "Sincronizando…"
         : snap.metadata.fromCache ? "Offline (dados locais)" : "✓ Sincronizado";
-    }, err => { $("status").textContent = "Erro: " + err.code; });
+    }, err => {
+      $("status").textContent = err.code === "permission-denied"
+        ? "Sem permissão: este e-mail não está autorizado a acessar o calendário."
+        : "Erro: " + err.code;
+    });
   }
 
   function gravar(ev) {
     const { id, ...dados } = ev;
-    setDoc(doc(db, "users", uid, "eventos", id), dados).catch(e => alert("Erro ao salvar: " + e.code));
+    setDoc(doc(db, "eventos", id), dados).catch(e => alert("Erro ao salvar: " + e.code));
   }
 
   // ---------- Calendário ----------
@@ -213,7 +217,7 @@
   });
   $("btnExcluir").onclick = () => {
     if (!editandoId || !confirm("Excluir este evento?")) return;
-    deleteDoc(doc(db, "users", uid, "eventos", editandoId)).catch(e => alert("Erro ao excluir: " + e.code));
+    deleteDoc(doc(db, "eventos", editandoId)).catch(e => alert("Erro ao excluir: " + e.code));
     fecharModal();
   };
   $("btnCancelar").onclick = fecharModal;
