@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meu Calendário</title>
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/locales/pt-br.global.min.js"></script>
+<style>
+  :root {
+    --bg: #f4f4f9; --card: #ffffff; --text: #1f2430; --muted: #6b7280;
+    --border: #e5e7eb; --accent: #2563eb; --accent-text: #ffffff; --danger: #dc2626;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14161c; --card: #1d2029; --text: #e8eaf0; --muted: #9aa1b2;
+      --border: #333847; --accent: #60a5fa; --accent-text: #0b1220; --danger: #f87171; color-scheme: dark; }
+  }
+  body { font-family: system-ui, Arial, sans-serif; margin: 0; padding: 16px; background: var(--bg); color: var(--text); }
+  .hidden { display: none !important; }
+  header { max-width: 960px; margin: 0 auto 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  header h1 { font-size: 1.2rem; margin: 0; margin-right: auto; }
+  .status, .user { font-size: .85rem; color: var(--muted); }
+  #calendar {
+    max-width: 960px; margin: 0 auto; background: var(--card); padding: 16px; border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.12);
+    --fc-page-bg-color: var(--card); --fc-border-color: var(--border);
+    --fc-neutral-bg-color: var(--bg); --fc-today-bg-color: color-mix(in srgb, var(--accent) 14%, transparent);
+    --fc-button-bg-color: var(--accent); --fc-button-border-color: var(--accent);
+    --fc-button-text-color: var(--accent-text); --fc-event-bg-color: var(--accent);
+    --fc-event-border-color: var(--accent); --fc-event-text-color: var(--accent-text);
+    --fc-list-event-hover-bg-color: var(--bg);
+  }
+  .fc a { color: inherit; } .fc-toolbar-title { font-size: 1.2rem !important; }
+  #login { max-width: 360px; margin: 15vh auto; text-align: center; background: var(--card); padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,.12); }
+  #loginErro { color: var(--danger); font-size: .85rem; margin-top: 12px; }
+  .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); justify-content: center; align-items: center; z-index: 1000; padding: 16px; }
+  .overlay.open { display: flex; }
+  .modal { background: var(--card); padding: 22px; border-radius: 10px; width: 100%; max-width: 420px; max-height: 100%; overflow-y: auto; }
+  .modal h3 { margin: 0 0 14px; }
+  label { display: block; font-size: .85rem; color: var(--muted); margin: 10px 0 4px; }
+  input, textarea { width: 100%; box-sizing: border-box; padding: 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }
+  textarea { min-height: 80px; resize: vertical; }
+  .row { display: flex; gap: 10px; } .row > div { flex: 1; }
+  .actions { display: flex; gap: 8px; margin-top: 18px; justify-content: flex-end; }
+  .btn { padding: 9px 16px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; font: inherit; }
+  .primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  .danger { color: var(--danger); margin-right: auto; }
+</style>
+</head>
+<body>
+
+<div id="login">
+  <h2>Meu Calendário</h2>
+  <p style="color:var(--muted)">Entre para acessar seus eventos em qualquer dispositivo.</p>
+  <button id="btnEntrar" class="btn primary">Entrar com Google</button>
+  <div id="loginErro"></div>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <h1>📅 Meu Calendário</h1>
+    <span id="status" class="status"></span>
+    <span id="usuario" class="user"></span>
+    <button id="btnSair" class="btn">Sair</button>
+  </header>
+  <div id="calendar"></div>
+</div>
+
+<div id="overlay" class="overlay">
+  <div class="modal">
+    <h3 id="modalTitle">Novo evento</h3>
+    <form id="form">
+      <label for="titulo">Título *</label>
+      <input id="titulo" required maxlength="120">
+      <div class="row">
+        <div><label for="data">Data *</label><input id="data" type="date" required></div>
+        <div><label for="hora">Hora (opcional)</label><input id="hora" type="time"></div>
+      </div>
+      <label for="local">Local</label>
+      <input id="local" maxlength="120">
+      <label for="descricao">Descrição / anotações</label>
+      <textarea id="descricao"></textarea>
+      <div class="actions">
+        <button type="button" id="btnExcluir" class="btn danger">Excluir</button>
+        <button type="button" id="btnCancelar" class="btn">Cancelar</button>
+        <button type="submit" class="btn primary">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut }
+    from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+  import { initializeFirestore, persistentLocalCache, collection, doc, setDoc, deleteDoc, onSnapshot }
+    from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+  // ====== COLE AQUI O SEU firebaseConfig (console do Firebase) ======
+  const firebaseConfig = {
+    apiKey: "COLE_AQUI",
+    authDomain: "COLE_AQUI",
+    projectId: "COLE_AQUI",
+    storageBucket: "COLE_AQUI",
+    messagingSenderId: "COLE_AQUI",
+    appId: "COLE_AQUI"
+  };
+  // ==================================================================
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = initializeFirestore(app, { localCache: persistentLocalCache() }); // funciona offline
+
+  const $ = id => document.getElementById(id);
+  let calendar = null, uid = null, eventos = [], editandoId = null, cancelarEscuta = null;
+
+  const colecao = () => collection(db, "users", uid, "eventos");
+  const paraFC = ev => ({
+    id: ev.id, title: ev.titulo, allDay: !ev.hora,
+    start: ev.hora ? ev.data + "T" + ev.hora : ev.data,
+    extendedProps: { local: ev.local, descricao: ev.descricao }
+  });
+
+  // ---------- Login ----------
+  $("btnEntrar").onclick = async () => {
+    $("loginErro").textContent = "";
+    try { await signInWithPopup(auth, new GoogleAuthProvider()); }
+    catch (e) { $("loginErro").textContent = "Não foi possível entrar: " + (e.code || e.message); }
+  };
+  $("btnSair").onclick = () => signOut(auth);
+
+  onAuthStateChanged(auth, user => {
+    if (user) {
+      uid = user.uid;
+      $("usuario").textContent = user.email || "";
+      $("login").classList.add("hidden");
+      $("app").classList.remove("hidden");
+      iniciarCalendario();
+      escutarEventos();
+    } else {
+      if (cancelarEscuta) cancelarEscuta();
+      cancelarEscuta = null; uid = null; eventos = [];
+      if (calendar) calendar.removeAllEvents();
+      $("app").classList.add("hidden");
+      $("login").classList.remove("hidden");
+    }
+  });
+
+  // ---------- Sincronização em tempo real ----------
+  function escutarEventos() {
+    if (cancelarEscuta) cancelarEscuta();
+    cancelarEscuta = onSnapshot(colecao(), { includeMetadataChanges: true }, snap => {
+      eventos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      calendar.batchRendering(() => {
+        calendar.removeAllEvents();
+        eventos.forEach(ev => calendar.addEvent(paraFC(ev)));
+      });
+      $("status").textContent = snap.metadata.hasPendingWrites ? "Sincronizando…"
+        : snap.metadata.fromCache ? "Offline (dados locais)" : "✓ Sincronizado";
+    }, err => { $("status").textContent = "Erro: " + err.code; });
+  }
+
+  function gravar(ev) {
+    const { id, ...dados } = ev;
+    setDoc(doc(db, "users", uid, "eventos", id), dados).catch(e => alert("Erro ao salvar: " + e.code));
+  }
+
+  // ---------- Calendário ----------
+  function iniciarCalendario() {
+    if (calendar) return;
+    calendar = new FullCalendar.Calendar($("calendar"), {
+      initialView: "dayGridMonth", locale: "pt-br", height: "auto", editable: true,
+      headerToolbar: { left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek,listMonth" },
+      dateClick: info => abrirModal(null, info.dateStr.slice(0, 10)),
+      eventClick: info => abrirModal(eventos.find(e => e.id === info.event.id)),
+      eventDrop: info => {
+        const ev = eventos.find(e => e.id === info.event.id);
+        if (!ev) return;
+        const s = info.event.startStr;
+        gravar({ ...ev, data: s.slice(0, 10), hora: info.event.allDay ? "" : s.slice(11, 16) });
+      }
+    });
+    calendar.render();
+  }
+
+  // ---------- Modal ----------
+  const overlay = $("overlay");
+  function abrirModal(ev, dataPadrao) {
+    editandoId = ev ? ev.id : null;
+    $("modalTitle").textContent = ev ? "Editar evento" : "Novo evento";
+    $("titulo").value = ev ? ev.titulo : "";
+    $("data").value = ev ? ev.data : dataPadrao;
+    $("hora").value = ev ? (ev.hora || "") : "";
+    $("local").value = ev ? (ev.local || "") : "";
+    $("descricao").value = ev ? (ev.descricao || "") : "";
+    $("btnExcluir").style.display = ev ? "" : "none";
+    overlay.classList.add("open");
+    $("titulo").focus();
+  }
+  function fecharModal() { overlay.classList.remove("open"); editandoId = null; }
+
+  $("form").addEventListener("submit", e => {
+    e.preventDefault();
+    const dados = {
+      titulo: $("titulo").value.trim(), data: $("data").value, hora: $("hora").value,
+      local: $("local").value.trim(), descricao: $("descricao").value.trim()
+    };
+    if (!dados.titulo || !dados.data) return;
+    const id = editandoId || doc(colecao()).id;
+    gravar({ id, ...dados });
+    fecharModal();
+  });
+  $("btnExcluir").onclick = () => {
+    if (!editandoId || !confirm("Excluir este evento?")) return;
+    deleteDoc(doc(db, "users", uid, "eventos", editandoId)).catch(e => alert("Erro ao excluir: " + e.code));
+    fecharModal();
+  };
+  $("btnCancelar").onclick = fecharModal;
+  overlay.addEventListener("click", e => { if (e.target === overlay) fecharModal(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") fecharModal(); });
+</script>
+</body>
+</html>
