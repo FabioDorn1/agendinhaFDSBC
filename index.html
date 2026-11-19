@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Meu Calendário</title>
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/locales/pt-br.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.15/locales/pt-br.global.min.js"></script>
 <style>
   :root {
     --bg: #f4f4f9; --card: #ffffff; --text: #1f2430; --muted: #6b7280;
@@ -94,7 +94,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
   import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut }
     from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-  import { initializeFirestore, persistentLocalCache, collection, doc, setDoc, deleteDoc, onSnapshot }
+  import { initializeFirestore, persistentLocalCache, collection, doc, setDoc, deleteDoc, onSnapshot, setLogLevel }
     from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
   // ====== COLE AQUI O SEU firebaseConfig (console do Firebase) ======
@@ -111,6 +111,7 @@
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
   const db = initializeFirestore(app, { localCache: persistentLocalCache(), experimentalForceLongPolling: true }); // funciona offline
+  if (location.search.includes("debug")) setLogLevel("debug"); // abra a página com ?debug no final do endereço
 
   const $ = id => document.getElementById(id);
   let calendar = null, uid = null, eventos = [], editandoId = null, cancelarEscuta = null;
@@ -165,6 +166,7 @@
         console.warn("Gravação pendente há 10 s: o Firestore não está conseguindo contatar o servidor.");
       }, 10000);
     }, err => {
+      console.error("Erro no listener do Firestore:", err);
       $("status").textContent = err.code === "permission-denied"
         ? "Sem permissão: este e-mail não está autorizado a acessar o calendário."
         : "Erro: " + err.code;
@@ -173,7 +175,9 @@
 
   function gravar(ev) {
     const { id, ...dados } = ev;
-    setDoc(doc(db, "eventos", id), dados).catch(e => alert("Erro ao salvar: " + e.code));
+    setDoc(doc(db, "eventos", id), dados)
+      .then(() => console.log("✓ Gravação confirmada pelo servidor"))
+      .catch(e => { console.error("Erro ao salvar:", e); alert("Erro ao salvar: " + e.code + " - " + e.message); });
   }
 
   // ---------- Calendário ----------
@@ -232,4 +236,3 @@
 </script>
 </body>
 </html>
-
